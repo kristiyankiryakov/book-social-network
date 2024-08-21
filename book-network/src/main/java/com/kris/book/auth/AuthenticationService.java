@@ -1,16 +1,19 @@
 package com.kris.book.auth;
 
+import com.kris.book.email.EmailService;
+import com.kris.book.email.EmailTemplateName;
 import com.kris.book.role.RoleRepository;
 import com.kris.book.user.Token;
 import com.kris.book.user.TokenRepository;
 import com.kris.book.user.User;
 import com.kris.book.user.UserRepository;
+import jakarta.mail.MessagingException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -24,8 +27,12 @@ public class AuthenticationService {
     private static final int TOKEN_LENGTH = 6;
     private final UserRepository userRepository;
     private final TokenRepository tokenRepository;
+    private final EmailService emailService;
 
-    public void register(RegistrationRequest request) {
+    @Value("${application.mailing.frontend.activation-url}")
+    private String activationUrl;
+
+    public void register(RegistrationRequest request) throws MessagingException {
         var userRole = roleRepository.findByName(USER_ROLE)
                 .orElseThrow(() -> new IllegalStateException("ROLE " + USER_ROLE + "was not initialized"));
         var user = User.builder()
@@ -41,9 +48,16 @@ public class AuthenticationService {
         sendValidationEmail(user);
     }
 
-    private void sendValidationEmail(User user) {
+    private void sendValidationEmail(User user) throws MessagingException {
         var newToken = generateAndSaveActivationToken(user);
-
+        emailService.sendEmail(
+                user.getEmail(),
+                user.fullName(),
+                EmailTemplateName.Activate_ACCOUNT,
+                activationUrl,
+                newToken,
+                "Account activation"
+        );
     }
 
     private String generateAndSaveActivationToken(User user) {
@@ -63,7 +77,7 @@ public class AuthenticationService {
         String characters = "0123456789";
         StringBuilder codeBuilder = new StringBuilder();
         SecureRandom secureRandom = new SecureRandom();
-        for (int i = 0; i < AuthenticationService.TOKEN_LENGTH; i++) {
+        for (int i = 0; i < TOKEN_LENGTH; i++) {
             int randomIndex = secureRandom.nextInt(characters.length());
             codeBuilder.append(characters.charAt(randomIndex));
         }
